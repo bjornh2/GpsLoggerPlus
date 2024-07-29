@@ -8,15 +8,17 @@ from micropyGPS import MicropyGPS
 
 # Constants
 ADXL345_ADDRESS = 0x53 # address for accelerometer 
-ADXL345_DEVICE_ID = 0x00 # address for accelerometer 
+ADXL345_DEVICE_ID_REG = 0x00 # address for accelerometer 
+ADXL345_DEVICE_ID = 0xE5 # Device ID of ADXL345
 #ADXL345_RESET = 0x?? # address for power control
 
 ADXL345_POWER_CTL = 0x2D # address for power control
 ADXL345_DATA_FORMAT = 0x31 # configure data format
 ADXL345_DATAX0 = 0x32 # where the x-axis data starts
-ADXL345_X_CAL = 13 # constand for normalize RAW value to 0-1
-ADXL345_Y_CAL = 13 # constand for normalize RAW value to 0-1
-ADXL345_Z_CAL = 13 # constand for normalize RAW value to 0-1
+ADXL345_SENSITIVITY_2G = 1.0 / 256  # (g/LSB)
+ADXL345_X_CAL = -1 # constand for calibration of RWA value
+ADXL345_Y_CAL = -3 # constand for calibration of RWA value
+ADXL345_Z_CAL = -1 # constand for calibration of RWA value
 ADXL345_TILT_RES = 4 # constand for resulution of tilt angle, RV only intrested of +-10 deg
 # max out 255/90 deg -> 2.8/1 deg -> 10 deg = 28
 # 3 LED = 0-7, 4/LED-step -> gitter resistant on +-2
@@ -25,8 +27,10 @@ ADXL345_XYZ_TRANS = 0.0039 # constand for normalize RAW value to 0-0.999
 # Initialize ADXL345
 def init_adxl345():
     # TODO: call reset! - ADXL345_RESET
-    did = i2c.readfrom_mem(ADXL345_ADDRESS, ADXL345_DEVICE_ID, 2) # get device ID
-    print('Divece ID', did)
+    data = i2c.readfrom_mem(ADXL345_ADDRESS, ADXL345_DEVICE_ID_REG, 1) # get device ID
+    print('ADXL345 Divece ID', data)
+    if (data != bytearray((ADXL345_DEVICE_ID,))):
+        print("ERROR: Could not communicate with ADXL345")
     i2c.writeto_mem(ADXL345_ADDRESS, ADXL345_POWER_CTL, bytearray([0x08]))  # Set bit 3 to 1 to enable measurement mode
     i2c.writeto_mem(ADXL345_ADDRESS, ADXL345_DATA_FORMAT, bytearray([0x0B]))  # Set data format to full resolution, +/- 16g
 
@@ -47,6 +51,9 @@ spi = SPI(0, 10_000_000, sck=Pin(2), mosi=Pin(3), miso=Pin(4))
 
 # Initialize I2C
 i2c = I2C(1, sda=Pin(6), scl=Pin(7), freq=100000)
+#i2c = I2C(0, sda=Pin(0), scl=Pin(1), freq=100000)
+print('')
+print(i2c.scan())
 
 # Setup pins for RGB-LED
 green_x_plus = Pin(10, Pin.OUT, value=0)
@@ -62,27 +69,51 @@ green_y_minus = Pin(19, Pin.OUT, value=0)
 yellow_y_minus = Pin(20, Pin.OUT, value=0)
 red_y_minus = Pin(21, Pin.OUT, value=0)
 
+# Function for turning off LED:s
+def turn_off_leds(led1, led2, led3):
+    led1.off()
+    led2.off()
+    led3.off()
+
+# Function for translate tilt angle and activate corsponding LED:s
+def control_led_values(led1, led2, led4, value):
+    value_int = round(value)
+    # bit 1
+    if value_int in [1, 3, 5, 7] or value_int > 7:
+        led1.on()
+    else:
+        led1.off()
+    # bit 2
+    if value_int in [2, 3, 6, 7] or value_int > 7:
+        led2.on()
+    else:
+        led2.off()    
+    # bit 3
+    if value_int >= 4:
+        led4.on()
+    else:
+        led4.off()    
+
+
 # Function for calculate tilt and activate corsponding LED:s
-def activate_tilt_lds(x, y, z):
-    # check till in X
+def activate_tilt_leds(x, y, z):
+    # check tilt on X axel
     tilt_x = abs(x / ADXL345_TILT_RES)
     if x > 0:
-        green_x_plus.on()
-        yellow_x_plus.on()
-        red_x_plus.on()
-        green_x_minus.off()
-        yellow_x_minus.off()
-        red_x_minus.off()
+        control_led_values(green_x_plus, yellow_x_plus, red_x_plus, tilt_x)
+        turn_off_leds(green_x_minus, yellow_x_minus, red_x_minus)
     else:
-        green_x_plus.off()
-        yellow_x_plus.off()
-        red_x_plus.off()
-        green_x_minus.on()
-        yellow_x_minus.on()
-        red_x_minus.on()       
-
-
-
+        control_led_values(green_x_minus, yellow_x_minus, red_x_minus, tilt_x)
+        turn_off_leds(green_x_plus, yellow_x_plus, red_x_plus)
+        
+    # check tilt on Y axel
+    tilt_y = abs(y / ADXL345_TILT_RES)
+    if y > 0:
+        control_led_values(green_y_plus, yellow_y_plus, red_y_plus, tilt_y)
+        turn_off_leds(green_y_minus, yellow_y_minus, red_y_minus)
+    else:
+        control_led_values(green_y_minus, yellow_y_minus, red_y_minus, tilt_y)
+        turn_off_leds(green_y_plus, yellow_y_plus, red_y_plus)
 
 '''
 Reserved C++ UART0 TX 0, RX 1
@@ -169,7 +200,7 @@ while True:
     print("X: {}, Y: {}, Z: {}".format(x*ADXL345_XYZ_TRANS, y*ADXL345_XYZ_TRANS, z*ADXL345_XYZ_TRANS))
     print("X: {}, Y: {}, Z: {}".format(x + ADXL345_X_CAL, y + ADXL345_Y_CAL, z + ADXL345_Z_CAL))
     print("X: {}, Y: {}, Z: {}".format(x_cal, y_cal, z_cal))
-    activate_tilt_lds(x_cal, y_cal, z_cal)
+    activate_tilt_leds(x + ADXL345_X_CAL, y + ADXL345_Y_CAL, z + ADXL345_Z_CAL)
     time.sleep(0.5)
     
 print('ready')
