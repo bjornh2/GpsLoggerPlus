@@ -8,16 +8,25 @@ from micropyGPS import MicropyGPS
 
 # Constants
 ADXL345_ADDRESS = 0x53 # address for accelerometer 
+ADXL345_DEVICE_ID = 0x00 # address for accelerometer 
+#ADXL345_RESET = 0x?? # address for power control
+
 ADXL345_POWER_CTL = 0x2D # address for power control
 ADXL345_DATA_FORMAT = 0x31 # configure data format
 ADXL345_DATAX0 = 0x32 # where the x-axis data starts
 ADXL345_X_CAL = 13 # constand for normalize RAW value to 0-1
 ADXL345_Y_CAL = 13 # constand for normalize RAW value to 0-1
 ADXL345_Z_CAL = 13 # constand for normalize RAW value to 0-1
+ADXL345_TILT_RES = 4 # constand for resulution of tilt angle, RV only intrested of +-10 deg
+# max out 255/90 deg -> 2.8/1 deg -> 10 deg = 28
+# 3 LED = 0-7, 4/LED-step -> gitter resistant on +-2
 ADXL345_XYZ_TRANS = 0.0039 # constand for normalize RAW value to 0-0.999
 
 # Initialize ADXL345
 def init_adxl345():
+    # TODO: call reset! - ADXL345_RESET
+    did = i2c.readfrom_mem(ADXL345_ADDRESS, ADXL345_DEVICE_ID, 2) # get device ID
+    print('Divece ID', did)
     i2c.writeto_mem(ADXL345_ADDRESS, ADXL345_POWER_CTL, bytearray([0x08]))  # Set bit 3 to 1 to enable measurement mode
     i2c.writeto_mem(ADXL345_ADDRESS, ADXL345_DATA_FORMAT, bytearray([0x0B]))  # Set data format to full resolution, +/- 16g
 
@@ -37,21 +46,43 @@ cs = machine.Pin(5, machine.Pin.OUT)
 spi = SPI(0, 10_000_000, sck=Pin(2), mosi=Pin(3), miso=Pin(4))
 
 # Initialize I2C
-i2c = I2C(1, sda=Pin(6), scl=Pin(7), freq=400000)
+i2c = I2C(1, sda=Pin(6), scl=Pin(7), freq=100000)
 
 # Setup pins for RGB-LED
-green_lu = Pin(10, Pin.OUT, value=0)
-yellow_lu = Pin(11, Pin.OUT, value=0)
-red_lu = Pin(12, Pin.OUT, value=0)
-green_ld = Pin(13, Pin.OUT, value=0)
-yellow_ld = Pin(14, Pin.OUT, value=0)
-red_ld = Pin(15, Pin.OUT, value=0)
-green_ru = Pin(16, Pin.OUT, value=0)
-yellow_ru = Pin(17, Pin.OUT, value=0)
-red_ru = Pin(18, Pin.OUT, value=0)
-green_rd = Pin(19, Pin.OUT, value=0)
-yellow_rd = Pin(20, Pin.OUT, value=0)
-red_rd = Pin(21, Pin.OUT, value=0)
+green_x_plus = Pin(10, Pin.OUT, value=0)
+yellow_x_plus = Pin(11, Pin.OUT, value=0)
+red_x_plus = Pin(12, Pin.OUT, value=0)
+green_x_minus = Pin(13, Pin.OUT, value=0)
+yellow_x_minus = Pin(14, Pin.OUT, value=0)
+red_x_minus = Pin(15, Pin.OUT, value=0)
+green_y_plus = Pin(16, Pin.OUT, value=0)
+yellow_y_plus = Pin(17, Pin.OUT, value=0)
+red_y_plus = Pin(18, Pin.OUT, value=0)
+green_y_minus = Pin(19, Pin.OUT, value=0)
+yellow_y_minus = Pin(20, Pin.OUT, value=0)
+red_y_minus = Pin(21, Pin.OUT, value=0)
+
+# Function for calculate tilt and activate corsponding LED:s
+def activate_tilt_lds(x, y, z):
+    # check till in X
+    tilt_x = abs(x / ADXL345_TILT_RES)
+    if x > 0:
+        green_x_plus.on()
+        yellow_x_plus.on()
+        red_x_plus.on()
+        green_x_minus.off()
+        yellow_x_minus.off()
+        red_x_minus.off()
+    else:
+        green_x_plus.off()
+        yellow_x_plus.off()
+        red_x_plus.off()
+        green_x_minus.on()
+        yellow_x_minus.on()
+        red_x_minus.on()       
+
+
+
 
 '''
 Reserved C++ UART0 TX 0, RX 1
@@ -138,6 +169,7 @@ while True:
     print("X: {}, Y: {}, Z: {}".format(x*ADXL345_XYZ_TRANS, y*ADXL345_XYZ_TRANS, z*ADXL345_XYZ_TRANS))
     print("X: {}, Y: {}, Z: {}".format(x + ADXL345_X_CAL, y + ADXL345_Y_CAL, z + ADXL345_Z_CAL))
     print("X: {}, Y: {}, Z: {}".format(x_cal, y_cal, z_cal))
+    activate_tilt_lds(x_cal, y_cal, z_cal)
     time.sleep(0.5)
     
 print('ready')
