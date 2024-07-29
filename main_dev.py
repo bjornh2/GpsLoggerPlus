@@ -1,5 +1,6 @@
 from machine import Pin, UART, SPI, I2C
-import os
+#import os
+import vfs
 import sdcard
 import time
 import struct
@@ -15,7 +16,11 @@ ADXL345_DEVICE_ID = 0xE5 # Device ID of ADXL345
 ADXL345_POWER_CTL = 0x2D # address for power control
 ADXL345_DATA_FORMAT = 0x31 # configure data format
 ADXL345_DATAX0 = 0x32 # where the x-axis data starts
-ADXL345_SENSITIVITY_2G = 1.0 / 256  # (g/LSB)
+# SENSITIVITY has not any inpact on tilt angle
+ADXL345_SENSITIVITY_2G = 0x08 # full resolution, +/- 2g
+ADXL345_SENSITIVITY_4G = 0x09 # full resolution, +/- 4g
+ADXL345_SENSITIVITY_8G = 0x0A # full resolution, +/- 8g
+ADXL345_SENSITIVITY_16G = 0x0B # full resolution, +/- 16g
 ADXL345_X_CAL = -1 # constand for calibration of RWA value
 ADXL345_Y_CAL = -3 # constand for calibration of RWA value
 ADXL345_Z_CAL = -1 # constand for calibration of RWA value
@@ -32,7 +37,7 @@ def init_adxl345():
     if (data != bytearray((ADXL345_DEVICE_ID,))):
         print("ERROR: Could not communicate with ADXL345")
     i2c.writeto_mem(ADXL345_ADDRESS, ADXL345_POWER_CTL, bytearray([0x08]))  # Set bit 3 to 1 to enable measurement mode
-    i2c.writeto_mem(ADXL345_ADDRESS, ADXL345_DATA_FORMAT, bytearray([0x0B]))  # Set data format to full resolution, +/- 16g
+    i2c.writeto_mem(ADXL345_ADDRESS, ADXL345_DATA_FORMAT, bytearray([ADXL345_SENSITIVITY_16G]))  # Set data format resolution
 
 # Read acceleration data
 def read_accel_data():
@@ -139,12 +144,17 @@ b'$GPTXT,01,01,01,ANTENNA OK*35\r\n'
 '''
 uart= UART(1, baudrate=9600, bits=8, parity=None, stop=1, tx=Pin(8), rx=Pin(9), timeout=300)
 
-# Initialize SD card
-#sd = sdcard.SDCard(spi, cs)
+# Inti tilt sensor ADXL345
+init_adxl345()
 
-# Mount filesystem
+# Initialize SD card
+sd = sdcard.SDCard(spi, cs)
+
+# Mount sdcard filesystem
 # vfs = os.VfsFat(sd)
 # os.mount(vfs, "/sd")
+vfs_sd = vfs.VfsFat(sd)
+vfs.mount(vfs_sd, "/sd")
 
 # Create a file and write something to it
 # with open("/sd/test02.txt", "w") as file:
@@ -156,41 +166,42 @@ uart= UART(1, baudrate=9600, bits=8, parity=None, stop=1, tx=Pin(8), rx=Pin(9), 
 #     data = file.read()
 #     print(data)
     
-# Create a log file and write nmea data to it
-# with open("/sd/nmea.txt", "a") as file:
-#     
-#     print ('Reading GPS data...')
-#     while True:
-#         if uart.any():
-#             nmea_msg = uart.readline()
-#             #print (nmea_msg)print (nmea_msg)
-#             my_gps.update_nmea_sentence(nmea_msg)
-#             
-#             if my_gps.last_nmea_type == 'GNRMC':
-#                 print (nmea_msg)
-#                 file.write(nmea_msg)
-#                 print('nmea_type          ', my_gps.last_nmea_type)
-#                 print('latitude           ', my_gps.latitude)
-#                 print('longitude          ', my_gps.longitude)
-#                 print('geoid_height       ', my_gps.geoid_height)
-#                 print('altitude           ', my_gps.altitude)
-#                 print('speed              ', my_gps.speed)
-#                 print('course             ', my_gps.course)
-#                 print('satellites_in_view ', my_gps.satellites_in_view)
-#                 print('satellites_in_use  ', my_gps.satellites_in_use)
-#                 print('fix_type           ', my_gps.fix_type)
-#                 print('timestamp          ', my_gps.timestamp)
-#                 print('date               ', my_gps.date)
-#                 print('local_offset       ', my_gps.local_offset)
-#                 
-#                 yellow_lu.value(not yellow_lu.value())
-
-#     print('one more time')
-#     time.sleep(1)
-
-# Main loop
-init_adxl345()
+    
+print ('Reading GPS data...')
 while True:
+    if uart.any():
+        nmea_msg = uart.readline()
+        #print(nmea_msg)
+        my_gps.update_nmea_sentence(nmea_msg)
+        
+        if my_gps.last_nmea_type == 'GNRMC':
+            print (nmea_msg)
+            # Append nmea data to log file
+            file_name = '/sd/nmea_20' + str(my_gps.date[2]) + '_' + str(my_gps.date[1]) + '_' + str(my_gps.date[0]) + '.txt'  
+            print(file_name)
+            #with open("/sd/nmea.txt", "a") as file:
+            with open(file_name, "a") as file:
+                file.write(nmea_msg)
+            # print out the result of my_gps
+            print('nmea_type          ', my_gps.last_nmea_type)
+            print('latitude           ', my_gps.latitude)
+            print('longitude          ', my_gps.longitude)
+            print('geoid_height       ', my_gps.geoid_height)
+            print('altitude           ', my_gps.altitude)
+            print('speed              ', my_gps.speed)
+            print('course             ', my_gps.course)
+            print('satellites_in_view ', my_gps.satellites_in_view)
+            print('satellites_in_use  ', my_gps.satellites_in_use)
+            print('fix_type           ', my_gps.fix_type)
+            print('timestamp          ', my_gps.timestamp)
+            print('date               ', my_gps.date)
+            print('local_offset       ', my_gps.local_offset)
+            time.sleep(0.2)
+
+    else:
+        time.sleep(0.5)
+        
+    # read tilt angle
     x, y, z = read_accel_data()
     print('--------------------')
     print(x, y, z) # raw values from sensor
@@ -201,6 +212,5 @@ while True:
     print("X: {}, Y: {}, Z: {}".format(x + ADXL345_X_CAL, y + ADXL345_Y_CAL, z + ADXL345_Z_CAL))
     print("X: {}, Y: {}, Z: {}".format(x_cal, y_cal, z_cal))
     activate_tilt_leds(x + ADXL345_X_CAL, y + ADXL345_Y_CAL, z + ADXL345_Z_CAL)
-    time.sleep(0.5)
     
 print('ready')

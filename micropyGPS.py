@@ -205,9 +205,9 @@ class MicropyGPS(object):
                 day = int(date_string[0:2])
                 month = int(date_string[2:4])
                 year = int(date_string[4:6])
-                self.date = (day, month, year)
+                self.date = [day, month, year]
             else:  # No Date stamp yet
-                self.date = (0, 0, 0)
+                self.date = [0, 0, 0]
 
         except ValueError:  # Bad Date stamp value present
             return False
