@@ -29,6 +29,10 @@ ADXL345_TILT_RES = 4 # constand for resulution of tilt angle, RV only intrested 
 # 3 LED = 0-7, 4/LED-step -> gitter resistant on +-2
 ADXL345_XYZ_TRANS = 0.0039 # constand for normalize RAW value to 0-0.999
 
+# variables for average out rippel in tilt sensor output
+x_list = [0, 0, 0, 0, 0, 0]
+y_list = [0, 0, 0, 0, 0, 0]
+
 # Initialize ADXL345
 def init_adxl345():
     # TODO: call reset! - ADXL345_RESET
@@ -73,6 +77,17 @@ red_y_plus = Pin(18, Pin.OUT, value=0)
 green_y_minus = Pin(19, Pin.OUT, value=0)
 yellow_y_minus = Pin(20, Pin.OUT, value=0)
 red_y_minus = Pin(21, Pin.OUT, value=0)
+
+# Function to get average value of elements in list
+def get_average_value(element_list):
+    numb_elements = len(element_list)
+    if numb_elements == 0:
+        return 0
+    sum_elements = 0
+    for x in range(numb_elements):
+        sum_elements += element_list[x]
+    print('average value are: ', round(sum_elements / numb_elements))
+    return round(sum_elements / numb_elements)    
 
 # Function for turning off LED:s
 def turn_off_leds(led1, led2, led3):
@@ -205,12 +220,24 @@ while True:
     x, y, z = read_accel_data()
     print('--------------------')
     print(x, y, z) # raw values from sensor
+    x_cal = x + ADXL345_X_CAL
+    y_cal = y + ADXL345_Y_CAL
+    z_cal = z + ADXL345_Z_CAL
+    print(x_cal, y_cal, z_cal) # raw values from sensor
+    x_list.append(x_cal)
+    x_list.pop(0)
+    x_average = get_average_value(x_list)
+    y_list.append(y_cal)
+    y_list.pop(0)
+    y_average = get_average_value(y_list)
+    print("X: {}, Y: {}, Z: {}".format(x_average, y_average, z_cal))
+    activate_tilt_leds(x_average, y_average, z)
+    '''
     x_cal = (x + ADXL345_X_CAL) * ADXL345_XYZ_TRANS
     y_cal = (y + ADXL345_Y_CAL) * ADXL345_XYZ_TRANS
     z_cal = (z + ADXL345_Z_CAL) * ADXL345_XYZ_TRANS
     print("X: {}, Y: {}, Z: {}".format(x*ADXL345_XYZ_TRANS, y*ADXL345_XYZ_TRANS, z*ADXL345_XYZ_TRANS))
     print("X: {}, Y: {}, Z: {}".format(x + ADXL345_X_CAL, y + ADXL345_Y_CAL, z + ADXL345_Z_CAL))
-    print("X: {}, Y: {}, Z: {}".format(x_cal, y_cal, z_cal))
-    activate_tilt_leds(x + ADXL345_X_CAL, y + ADXL345_Y_CAL, z + ADXL345_Z_CAL)
+    '''
     
 print('ready')
